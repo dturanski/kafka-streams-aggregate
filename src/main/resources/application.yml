@@ -1,0 +1,11 @@
+spring.application.name: kafka-streams-aggregate-sample
+spring.cloud.stream.bindings.input:
+  destination: balance-on-hand
+spring.cloud.stream.bindings.ktable:
+  destination: balance-on-hand-ktable
+
+spring.cloud.stream.kafka.streams.binder:
+  configuration:
+    default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+    default.value.serde: org.apache.kafka.common.serialization.Serdes$BytesSerde
+    commit.interval.ms: 1000
