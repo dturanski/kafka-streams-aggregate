@@ -19,27 +19,28 @@ package kafka.streams.table.join;
 /**
  * @author Soby Chacko
  */
+public class SummaryEvent {
 
-public class DomainEvent {
-
-	private int delta;
+	private int count;
 
 	private String key;
 
-	private Action action;
+	private String source;
 
-	private String source = "Default Source";
+	public SummaryEvent(){};
 
-	public static enum Action{
-		INC, DEC;
+	public SummaryEvent(String key, int count, String source) {
+		this.count = count;
+		this.key = key;
+		this.source = source;
 	}
 
-	public int getDelta() {
-		return delta;
+	public int getCount() {
+		return count;
 	}
 
-	public void setDelta(int delta) {
-		this.delta = delta;
+	public void setCount(int count) {
+		this.count = count;
 	}
 
 	public String getKey() {
@@ -48,14 +49,6 @@ public class DomainEvent {
 
 	public void setKey(String key) {
 		this.key = key;
-	}
-
-	public Action getAction() {
-		return action;
-	}
-
-	public void setAction(Action action) {
-		this.action = action;
 	}
 
 	public String getSource() {

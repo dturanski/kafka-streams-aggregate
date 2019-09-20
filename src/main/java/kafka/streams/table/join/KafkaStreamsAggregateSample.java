@@ -16,88 +16,94 @@
 
 package kafka.streams.table.join;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Reducer;
 import org.apache.kafka.streams.kstream.Serialized;
 import org.apache.kafka.streams.state.KeyValueStore;
-import org.apache.kafka.streams.state.QueryableStoreTypes;
-import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.annotation.Input;
+import org.springframework.cloud.stream.annotation.Output;
 import org.springframework.cloud.stream.annotation.StreamListener;
-import org.springframework.cloud.stream.binder.kafka.streams.InteractiveQueryService;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.kafka.support.serializer.JsonSerde;
+import org.springframework.messaging.handler.annotation.SendTo;
 
 import static kafka.streams.table.join.DomainEvent.Action.DEC;
 
 @SpringBootApplication
 public class KafkaStreamsAggregateSample {
 
-	@Autowired
-	private InteractiveQueryService queryService;
 
 	public static void main(String[] args) {
 		SpringApplication.run(KafkaStreamsAggregateSample.class, args);
 	}
 
 
-	final static String STORE_NAME = "balance-on-hand-ktable1";
+	final static String STORE_NAME = "balance-on-hand-counts";
 
 
 	@EnableBinding(KafkaStreamsProcessorX.class)
 	public class KafkaStreamsAggregateSampleApplication {
 
-		@StreamListener
-		public void process(@Input("input") KStream<String, DomainEvent> input, @Input("ktable") KTable<String, Integer> kTable) {
+		@StreamListener("input")
+		@SendTo("output")
+		public KStream<String,SummaryEvent> process(KStream<String, DomainEvent> input) {
 
-			input.leftJoin(kTable,(domainEvent, balanceOnHand) -> {
-				int delta =  balanceOnHand == null ? 0 : balanceOnHand;
-				if (domainEvent.getAction().equals(DEC)) {
-					delta -= domainEvent.getDelta();
-				} else {
-					delta += domainEvent.getDelta();
-				}
-				System.out.println(String.format("key: %s delta: %d", domainEvent.getKey(), delta));
-				return delta;
-			}).groupByKey(Serialized.with(Serdes.String(), Serdes.Integer()))
-		      .aggregate(() -> new Integer(0),
-							(key, i1,i2) -> {
-								System.out.println(String.format("key: %s i1: %d i2: %d",key,i1, i2));
-		      					return i1 + i2;
-							}, Materialized.<String, Integer, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
-							  .withKeySerde(Serdes.String())
-							  .withValueSerde(Serdes.Integer()));
-		}
-	}
+			ObjectMapper mapper = new ObjectMapper();
+			Serde<SummaryEvent> summaryEventSerde = new JsonSerde<>(SummaryEvent.class, mapper);
 
-	@RestController
-	public class BalanceOnHandController {
-		ReadOnlyKeyValueStore<String, Integer> balanceStore;
 
-		@RequestMapping("/boh/{key}")
-		public Integer balanceOnHand(@PathVariable String key) {
-			if (balanceStore == null) {
-				balanceStore = queryService.getQueryableStore(STORE_NAME, QueryableStoreTypes.keyValueStore());
-			}
+			return input.join(
+				input.mapValues(domainEvent -> {
+					int delta;
+					if (domainEvent.getAction().equals(DEC)) {
+						delta = -domainEvent.getDelta();
+					} else {
+						delta = domainEvent.getDelta();
+					}
+					System.out.println(String.format("key: %s delta: %d", domainEvent.getKey(), delta));
+					return delta;
 
-			return balanceStore.get(key);
+				}).groupByKey(Serialized.with(Serdes.String(), Serdes.Integer()))
+				  .aggregate(()-> new Integer(0),
+								(key, i1,i2) -> {
+									//System.out.println(String.format("key: %s i1: %d i2: %d",key,i1, i2));
+									return i1 + i2;
+								}, Materialized.<String, Integer, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
+								  .withKeySerde(Serdes.String())
+								  .withValueSerde(Serdes.Integer())),
+					(domainEvent, count) -> new SummaryEvent(domainEvent.getKey(),count,domainEvent.getSource())
+				).groupByKey(Serialized.with(Serdes.String(), summaryEventSerde))
+					.reduce((summaryEvent, v1) -> {
+
+						String json = "";
+						try {
+							json = mapper.writeValueAsString(v1);
+						} catch (Exception e) {
+
+						}
+
+						System.out.println(String.format("summary %s", json));
+						return v1;
+					}).toStream();
+
+
 		}
 	}
 
 	interface KafkaStreamsProcessorX {
-
 		@Input("input")
 		KStream<?, ?> input();
-
-		@Input("ktable")
-		KTable<?,?> ktable();
+		@Output("output")
+		KStream<?, ?> output();
 	}
 }
