@@ -22,6 +22,7 @@ import java.util.Map;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.kstream.Initializer;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
@@ -38,6 +39,7 @@ import org.springframework.kafka.support.serializer.JsonSerde;
 import org.springframework.messaging.handler.annotation.SendTo;
 
 import static kafka.streams.table.join.DomainEvent.Action.DEC;
+import static kafka.streams.table.join.DomainEvent.Action.INC;
 
 @SpringBootApplication
 public class KafkaStreamsAggregateSample {
@@ -60,41 +62,25 @@ public class KafkaStreamsAggregateSample {
 
 			ObjectMapper mapper = new ObjectMapper();
 			Serde<SummaryEvent> summaryEventSerde = new JsonSerde<>(SummaryEvent.class, mapper);
+			Serde<DomainEvent> domainEventSerde = new JsonSerde<>(DomainEvent.class, mapper);
 
-
-			return input.join(
-				input.mapValues(domainEvent -> {
-					int delta;
-					if (domainEvent.getAction().equals(DEC)) {
-						delta = -domainEvent.getDelta();
-					} else {
-						delta = domainEvent.getDelta();
-					}
-					System.out.println(String.format("key: %s delta: %d", domainEvent.getKey(), delta));
-					return delta;
-
-				}).groupByKey(Serialized.with(Serdes.String(), Serdes.Integer()))
-				  .aggregate(()-> new Integer(0),
-								(key, i1,i2) -> {
-									//System.out.println(String.format("key: %s i1: %d i2: %d",key,i1, i2));
-									return i1 + i2;
-								}, Materialized.<String, Integer, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
-								  .withKeySerde(Serdes.String())
-								  .withValueSerde(Serdes.Integer())),
-					(domainEvent, count) -> new SummaryEvent(domainEvent.getKey(),count,domainEvent.getSource())
-				).groupByKey(Serialized.with(Serdes.String(), summaryEventSerde))
-					.reduce((summaryEvent, v1) -> {
-
-						String json = "";
-						try {
-							json = mapper.writeValueAsString(v1);
-						} catch (Exception e) {
-
+			return input.groupByKey(Serialized.with(Serdes.String(), domainEventSerde))
+					.aggregate(SummaryEvent::new,
+							(key,  domainEvent,  summaryEvent) -> {
+						int delta = domainEvent.getDelta();
+						summaryEvent.setSource(domainEvent.getSource());
+						if (domainEvent.getAction() == DEC) {
+							summaryEvent.setCount(summaryEvent.getCount() - delta);
+						} else if (domainEvent.getAction() == INC) {
+							summaryEvent.setCount(summaryEvent.getCount() + delta);
+						} else {
+							return null;
 						}
-
-						System.out.println(String.format("summary %s", json));
-						return v1;
-					}).toStream();
+						return summaryEvent;
+					}, Materialized.<String, SummaryEvent, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
+							.withKeySerde(Serdes.String())
+							.withValueSerde(summaryEventSerde))
+					.toStream();
 
 
 		}

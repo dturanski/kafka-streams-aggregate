@@ -56,7 +56,7 @@ public class KafkaStreamsAggregateSampleTests {
     final static String STORE_NAME = "balance-on-hand-counts";
 
     @ClassRule
-    public static EmbeddedKafkaRule embeddedKafka = new EmbeddedKafkaRule(1, true, INPUT_TOPIC, OUTPUT_TOPIC);
+    public static EmbeddedKafkaRule embeddedKafka = new EmbeddedKafkaRule(1, false, INPUT_TOPIC, OUTPUT_TOPIC);
 
     @BeforeClass
     public static void setup() {
@@ -102,8 +102,8 @@ public class KafkaStreamsAggregateSampleTests {
     public void processorInitialState() throws JsonProcessingException {
         sendMessages(1, 3);
         consumer.subscribe(Collections.singleton(OUTPUT_TOPIC));
-        ConsumerRecords<String, SummaryEvent> records = consumer.poll(Duration.ofSeconds(1));
-        consumer.commitSync();
+        System.out.println("Polling response");
+        ConsumerRecords<String, SummaryEvent> records = KafkaTestUtils.getRecords(consumer);
 
         for (Iterator<ConsumerRecord<String, SummaryEvent>> it = records.iterator(); it.hasNext();) {
             ConsumerRecord<String, SummaryEvent> record = it.next();
@@ -131,7 +131,7 @@ public class KafkaStreamsAggregateSampleTests {
                     balances[j] += ddEvent.getDelta();
                 }
 
-                System.out.println(ddEvent.getKey() + " : " + ddEvent.getDelta() + " " + ddEvent.getAction());
+                System.out.println("Sending DomainEvent" + ddEvent.getKey() + " : " + ddEvent.getDelta() + " " + ddEvent.getAction());
 
                 kafkaTemplate.send("balance-on-hand", ddEvent.getKey(), ddEvent);
 
