@@ -2,7 +2,6 @@ package kafka.streams.table.join;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -22,32 +21,40 @@ import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.stream.annotation.EnableBinding;
+import org.springframework.cloud.stream.annotation.Input;
+import org.springframework.cloud.stream.annotation.StreamListener;
+import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerde;
 import org.springframework.kafka.test.rule.EmbeddedKafkaRule;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
+import org.springframework.messaging.SubscribableChannel;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import static kafka.streams.table.join.DomainEvent.Action.DEC;
 
 @RunWith(SpringRunner.class)
-@SpringBootTest(
+@SpringBootTest(classes = KafkaStreamsAggregateSampleTests.TestSinkConfiguration.class,
         properties = {
-                "logging.level.org.apache=WARN"
-        }
-)
+//        "spring.cloud.stream.bindings.sink.destination=balance-on-hand-summary-event",
+//        "spring.cloud.stream.bindings.sink.group=test-sink",
+//        "spring.cloud.stream.bindings.sink.binder=kafka"
+})
 public class KafkaStreamsAggregateSampleTests {
 
     private KafkaTemplate<String, DomainEvent> kafkaTemplate;
     private Consumer<String, SummaryEvent> consumer;
     private Serde<DomainEvent> domainEventSerde;
-    private Serde<SummaryEvent> summaryEventSerde;
+    //private Serde<SummaryEvent> summaryEventSerde;
 
-    ObjectMapper mapper = new ObjectMapper();
+    private ObjectMapper mapper = new ObjectMapper();
 
     private static final String INPUT_TOPIC  =  "balance-on-hand";
     private static final String OUTPUT_TOPIC = "balance-on-hand-summary-event";
@@ -56,11 +63,12 @@ public class KafkaStreamsAggregateSampleTests {
     final static String STORE_NAME = "balance-on-hand-counts";
 
     @ClassRule
-    public static EmbeddedKafkaRule embeddedKafka = new EmbeddedKafkaRule(1, false, INPUT_TOPIC, OUTPUT_TOPIC);
+    public static EmbeddedKafkaRule embeddedKafka = new EmbeddedKafkaRule(1, false, INPUT_TOPIC);
 
     @BeforeClass
     public static void setup() {
         System.setProperty("spring.cloud.stream.kafka.streams.binder.brokers", embeddedKafka.getEmbeddedKafka().getBrokersAsString());
+      //  System.setProperty("spring.cloud.stream.kafka.binder.brokers", embeddedKafka.getEmbeddedKafka().getBrokersAsString());
     }
 
 
@@ -68,8 +76,8 @@ public class KafkaStreamsAggregateSampleTests {
     public void setUp() {
 
         Map<String, Object> props = new HashMap<>();
-        domainEventSerde = new JsonSerde<>(DomainEvent.class, mapper);
-        summaryEventSerde = new JsonSerde<>(SummaryEvent.class, mapper);
+        domainEventSerde = new JsonSerde<>(DomainEvent.class, new ObjectMapper());
+        Serde<SummaryEvent> summaryEventSerde = new JsonSerde<>(SummaryEvent.class, new ObjectMapper());
 
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, embeddedKafka.getEmbeddedKafka().getBrokersAsString());
         props.put(ProducerConfig.RETRIES_CONFIG, 0);
@@ -83,12 +91,11 @@ public class KafkaStreamsAggregateSampleTests {
         kafkaTemplate = new KafkaTemplate<>(pf, true);
 
         Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(GROUP_NAME, "false", embeddedKafka.getEmbeddedKafka());
-        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        //consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumerProps.put("key.deserializer", StringDeserializer.class);
         consumerProps.put("value.deserializer", summaryEventSerde.deserializer().getClass());
         consumerProps.put(JsonDeserializer.TRUSTED_PACKAGES, "kafka.streams.table.join");
-        DefaultKafkaConsumerFactory<String, SummaryEvent> cf = new DefaultKafkaConsumerFactory<>(consumerProps);
-
+        DefaultKafkaConsumerFactory<String, SummaryEvent> cf = new DefaultKafkaConsumerFactory<>(consumerProps, new StringDeserializer(), summaryEventSerde.deserializer());
         consumer = cf.createConsumer();
 
     }
@@ -99,8 +106,10 @@ public class KafkaStreamsAggregateSampleTests {
 
 
     @Test
-    public void processorInitialState() throws JsonProcessingException {
+    public void processorInitialState() throws JsonProcessingException, InterruptedException {
+
         sendMessages(1, 3);
+
         consumer.subscribe(Collections.singleton(OUTPUT_TOPIC));
         System.out.println("Polling response");
         ConsumerRecords<String, SummaryEvent> records = KafkaTestUtils.getRecords(consumer);
@@ -110,6 +119,7 @@ public class KafkaStreamsAggregateSampleTests {
             System.out.println(record.key() + ":" + mapper.writeValueAsString(record.value()));
         }
         //assertThat(records.count()).isEqualTo(100);
+        Thread.sleep(3000);
     }
 
 
@@ -141,5 +151,27 @@ public class KafkaStreamsAggregateSampleTests {
             System.out.println(String.format("%d : balance %d", i, balances[i]));
         }
     }
+
+    @SpringBootApplication
+    @Import(KafkaStreamsAggregateSample.class)
+   // @EnableBinding(TestSink.class)
+    public static class TestSinkConfiguration {
+        private ObjectMapper mapper = new ObjectMapper();
+
+//        @StreamListener("sink")
+//        public void consume(SummaryEvent summaryEvent) {
+//            try {
+//                System.out.println(mapper.writeValueAsString(summaryEvent));
+//            } catch (JsonProcessingException e) {
+//                e.printStackTrace();
+//            }
+//        }
+    }
+
+
+//    public interface TestSink {
+//        @Input("sink")
+//        SubscribableChannel sink();
+//    }
 
 }

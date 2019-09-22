@@ -19,6 +19,7 @@ package kafka.streams.table.join;
 /**
  * @author Soby Chacko
  */
+
 public class SummaryEvent {
 
 	private int count;

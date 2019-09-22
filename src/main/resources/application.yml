@@ -1,8 +1,13 @@
 spring.application.name: kafka-streams-aggregate-sample
+
 spring.cloud.stream.bindings.input:
+  consumer:
+    useNativeDecoding: false
   destination: balance-on-hand
   group: balance-on-hand-processor
 spring.cloud.stream.bindings.output:
+  producer:
+    useNativeEncoding: false
   destination: balance-on-hand-summary-event
 
 spring.cloud.stream.kafka.streams.binder:

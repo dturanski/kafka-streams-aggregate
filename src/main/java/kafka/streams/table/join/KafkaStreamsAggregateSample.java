@@ -64,23 +64,25 @@ public class KafkaStreamsAggregateSample {
 			Serde<SummaryEvent> summaryEventSerde = new JsonSerde<>(SummaryEvent.class, mapper);
 			Serde<DomainEvent> domainEventSerde = new JsonSerde<>(DomainEvent.class, mapper);
 
-			return input.groupByKey(Serialized.with(Serdes.String(), domainEventSerde))
-					.aggregate(SummaryEvent::new,
-							(key,  domainEvent,  summaryEvent) -> {
-						int delta = domainEvent.getDelta();
-						summaryEvent.setSource(domainEvent.getSource());
-						if (domainEvent.getAction() == DEC) {
-							summaryEvent.setCount(summaryEvent.getCount() - delta);
-						} else if (domainEvent.getAction() == INC) {
-							summaryEvent.setCount(summaryEvent.getCount() + delta);
-						} else {
-							return null;
-						}
-						return summaryEvent;
-					}, Materialized.<String, SummaryEvent, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
-							.withKeySerde(Serdes.String())
-							.withValueSerde(summaryEventSerde))
-					.toStream();
+			return input.mapValues((k,v)-> new SummaryEvent(k,v.getDelta(),v.getSource()));
+
+//			return input.groupByKey(Serialized.with(Serdes.String(), domainEventSerde))
+//					.aggregate(SummaryEvent::new,
+//							(key,  domainEvent,  summaryEvent) -> {
+//						int delta = domainEvent.getDelta();
+//						summaryEvent.setSource(domainEvent.getSource());
+//						if (domainEvent.getAction() == DEC) {
+//							summaryEvent.setCount(summaryEvent.getCount() - delta);
+//						} else if (domainEvent.getAction() == INC) {
+//							summaryEvent.setCount(summaryEvent.getCount() + delta);
+//						} else {
+//							return null;
+//						}
+//						return summaryEvent;
+//					}, Materialized.<String, SummaryEvent, KeyValueStore<Bytes, byte[]>>as(STORE_NAME)
+//							.withKeySerde(Serdes.String())
+//							.withValueSerde(summaryEventSerde))
+//					.toStream();
 
 
 		}
