@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 the original author or authors.
+ * Copyright 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,26 @@
  * limitations under the License.
  */
 
-package kafka.streams.table.join;
+package kafka.streams.inventory.count;
+
+import java.util.Objects;
 
 /**
- * @author Soby Chacko
+ * @author David Turanski
  */
 
-public class SummaryEvent {
+public class InventoryCountEvent {
 
 	private int count;
 
-	private String key;
+	private ProductKey key;
 
-	private String source;
 
-	public SummaryEvent(){};
+	public InventoryCountEvent(){};
 
-	public SummaryEvent(String key, int count, String source) {
+	public InventoryCountEvent(ProductKey key, int count) {
 		this.count = count;
 		this.key = key;
-		this.source = source;
 	}
 
 	public int getCount() {
@@ -44,19 +44,27 @@ public class SummaryEvent {
 		this.count = count;
 	}
 
-	public String getKey() {
+	public ProductKey getKey() {
 		return key;
 	}
 
-	public void setKey(String key) {
+	public void setKey(ProductKey key) {
 		this.key = key;
 	}
 
-	public String getSource() {
-		return source;
+
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		InventoryCountEvent that = (InventoryCountEvent) o;
+		return count == that.count &&
+				Objects.equals(key, that.key);
 	}
 
-	public void setSource(String source) {
-		this.source = source;
+	@Override
+	public int hashCode() {
+		return Objects.hash(count, key);
 	}
 }

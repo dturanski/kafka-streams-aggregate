@@ -1,19 +1,15 @@
 spring.application.name: kafka-streams-aggregate-sample
 
 spring.cloud.stream.bindings.input:
-  consumer:
-    useNativeDecoding: false
-  destination: balance-on-hand
-  group: balance-on-hand-processor
+  destination: inventory-update-events
+  group: inventory-processor
 spring.cloud.stream.bindings.output:
-  producer:
-    useNativeEncoding: false
-  destination: balance-on-hand-summary-event
+  destination: inventory-count-events
 
 spring.cloud.stream.kafka.streams.binder:
-#application.id: ${spring.application.name}
   configuration:
-    default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
-    default.value.serde: org.apache.kafka.common.serialization.Serdes$BytesSerde
-    commit.interval.ms: 1000
+    spring.json.trusted.packages: kafka.streams.inventory.count
+    default.key.serde: org.springframework.kafka.support.serializer.JsonSerde
+
+
 

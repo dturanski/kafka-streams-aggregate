@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 the original author or authors.
+ * Copyright 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,22 @@
  * limitations under the License.
  */
 
-package kafka.streams.table.join;
+package kafka.streams.inventory.count;
 
 /**
- * @author Soby Chacko
+ * @author David Turanski
  */
 
-public class DomainEvent {
+public class InventoryUpdateEvent {
 
 	private int delta;
 
-	private String key;
+	private ProductKey key;
 
 	private Action action;
 
-	private String source = "Default Source";
-
 	public static enum Action{
-		INC, DEC;
+		INC, DEC, REP;
 	}
 
 	public int getDelta() {
@@ -42,11 +40,11 @@ public class DomainEvent {
 		this.delta = delta;
 	}
 
-	public String getKey() {
+	public ProductKey getKey() {
 		return key;
 	}
 
-	public void setKey(String key) {
+	public void setKey(ProductKey key) {
 		this.key = key;
 	}
 
@@ -56,13 +54,5 @@ public class DomainEvent {
 
 	public void setAction(Action action) {
 		this.action = action;
-	}
-
-	public String getSource() {
-		return source;
-	}
-
-	public void setSource(String source) {
-		this.source = source;
 	}
 }

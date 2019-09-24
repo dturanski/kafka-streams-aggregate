@@ -5,8 +5,9 @@
             <pattern>%d{ISO8601} %5p %t %c{2}:%L - %m%n</pattern>
         </encoder>
     </appender>
-    <root level="INFO">
+    <root level="WARN">
         <appender-ref ref="stdout"/>
     </root>
     <logger name="org.apache.kafka.streams.processor.internals" level="WARN"/>
+    <logger name="kafka.streams.table.join" level="DEBUG"/>
 </configuration>
