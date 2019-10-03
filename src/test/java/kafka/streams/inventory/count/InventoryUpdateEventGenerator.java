@@ -36,9 +36,9 @@ class InventoryUpdateEventGenerator {
 
     private final static Logger logger = LoggerFactory.getLogger(InventoryUpdateEventGenerator.class);
 
-    final KafkaTemplate<ProductKey, InventoryUpdateEvent> kafkaTemplate;
+    private final KafkaTemplate<ProductKey, InventoryUpdateEvent> kafkaTemplate;
 
-    Map<ProductKey, Integer> accumulatedInventoryCounts = new LinkedHashMap<>();
+    private Map<ProductKey, Integer> accumulatedInventoryCounts = new LinkedHashMap<>();
 
     InventoryUpdateEventGenerator(Map<String, Object> producerProperties, String destination) {
 
@@ -48,9 +48,9 @@ class InventoryUpdateEventGenerator {
     }
 
 
-    Map<ProductKey, Integer> generateRandomMessages(int numberKeys, int eventsPerKey) {
+    Map<ProductKey, Integer> generateRandomEvents(int numberKeys, int eventsPerKey) {
         InventoryUpdateEvent.Action[] actions = {INC, DEC, REP};
-        return doGenerateMessages(numberKeys, eventsPerKey, actions, Optional.empty());
+        return doGenerateEvents(numberKeys, eventsPerKey, actions, Optional.empty());
     }
 
     void reset() {
@@ -64,7 +64,7 @@ class InventoryUpdateEventGenerator {
      * @param value        an optional value to set for each event instead of random values.
      * @return expected calculated counts. Accumulates values since last reset to simulate what the aggregator does.
      */
-    Map<ProductKey, Integer> doGenerateMessages(int numberKeys, int eventsPerKey, InventoryUpdateEvent.Action[] actions, Optional<Integer> value) {
+    private Map<ProductKey, Integer> doGenerateEvents(int numberKeys, int eventsPerKey, InventoryUpdateEvent.Action[] actions, Optional<Integer> value) {
         Random random = new Random();
         InventoryCountUpdateEventUpdater summaryEventUpdater = new InventoryCountUpdateEventUpdater();
 
