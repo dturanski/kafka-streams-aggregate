@@ -12,6 +12,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 
 import static kafka.streams.inventory.count.InventoryUpdateEvent.Action.DEC;
 import static kafka.streams.inventory.count.InventoryUpdateEvent.Action.INC;
+import static kafka.streams.inventory.count.InventoryUpdateEvent.Action.REP;
 
 /**
  * Test fixture to generate {@link InventoryUpdateEvent}s to a topic and maintain the state of the expected aggregated inventory counts.
@@ -22,25 +23,24 @@ class InventoryUpdateEventGenerator {
     private final static Logger logger = LoggerFactory.getLogger(InventoryUpdateEventGenerator.class);
 
     final KafkaTemplate<ProductKey, InventoryUpdateEvent> kafkaTemplate;
-    private final String destination;
 
-    Map<ProductKey, Integer> accumulatedBalances = new LinkedHashMap<>();
+    Map<ProductKey, Integer> accumulatedInventoryCounts = new LinkedHashMap<>();
 
     InventoryUpdateEventGenerator(Map<String, Object> producerProperties, String destination) {
 
         DefaultKafkaProducerFactory<ProductKey, InventoryUpdateEvent> pf = new DefaultKafkaProducerFactory(producerProperties);
         kafkaTemplate = new KafkaTemplate<>(pf, true);
-        this.destination = destination;
+        kafkaTemplate.setDefaultTopic(destination);
     }
 
 
     Map<ProductKey, Integer> generateRandomMessages(int numberKeys, int eventsPerKey) {
-        InventoryUpdateEvent.Action[] actions = {INC, DEC};
+        InventoryUpdateEvent.Action[] actions = {INC, DEC, REP};
         return doGenerateMessages(numberKeys, eventsPerKey, actions, Optional.empty());
     }
 
     void reset() {
-        accumulatedBalances.keySet().forEach(key -> kafkaTemplate.send(destination, key, null));
+        accumulatedInventoryCounts.keySet().forEach(key -> kafkaTemplate.sendDefault(key, null));
     }
 
     /**
@@ -48,7 +48,7 @@ class InventoryUpdateEventGenerator {
      * @param eventsPerKey number of events per key
      * @param actions      the list of update actions to include
      * @param value        an optional value to set for each event instead of random values.
-     * @return expected calculated balances. Accumulated values since last reset.
+     * @return expected calculated counts. Accumulates values since last reset to simulate what the aggregator does.
      */
     Map<ProductKey, Integer> doGenerateMessages(int numberKeys, int eventsPerKey, InventoryUpdateEvent.Action[] actions, Optional<Integer> value) {
         Random random = new Random();
@@ -58,25 +58,26 @@ class InventoryUpdateEventGenerator {
         for (int j = 0; j < numberKeys; j++) {
             ProductKey key = new ProductKey("key" + j);
             InventoryCountEvent inventoryCountEvent = new InventoryCountEvent(key,
-                    accumulatedBalances.containsKey(key) ? accumulatedBalances.get(key) : 0);
+                    accumulatedInventoryCounts.containsKey(key) ? accumulatedInventoryCounts.get(key) : 0);
             for (int i = 0; i < eventsPerKey; i++) {
-                InventoryUpdateEvent updateEvent = new InventoryUpdateEvent();
-                updateEvent.setKey(key);
+                InventoryUpdateEvent inventoryUpdateEvent = new InventoryUpdateEvent();
+                inventoryUpdateEvent.setKey(key);
 
-                updateEvent.setDelta(value.orElse(random.nextInt(10) + 1));
-                updateEvent.setAction(actions[random.nextInt(actions.length)]);
+                inventoryUpdateEvent.setDelta(value.orElse(random.nextInt(10) + 1));
+                inventoryUpdateEvent.setAction(actions[random.nextInt(actions.length)]);
 
-                inventoryCountEvent = summaryEventUpdater.apply(updateEvent, inventoryCountEvent);
+                inventoryCountEvent = summaryEventUpdater.apply(inventoryUpdateEvent, inventoryCountEvent);
 
 
-                logger.debug("Sending InventoryUpdateEvent:" + updateEvent.getKey().getProductCode() + " : " + updateEvent.getDelta() + " " + updateEvent.getAction());
+                logger.debug("Sending inventoryUpdateEvent: key {} delta {} action {}",
+                        inventoryUpdateEvent.getKey().getProductCode() ,inventoryUpdateEvent.getDelta(),inventoryUpdateEvent.getAction());
 
-                kafkaTemplate.send(destination, updateEvent.getKey(), updateEvent);
+                kafkaTemplate.sendDefault(inventoryUpdateEvent.getKey(), inventoryUpdateEvent);
 
             }
-            accumulatedBalances.put(key, inventoryCountEvent.getCount());
+            accumulatedInventoryCounts.put(key, inventoryCountEvent.getCount());
         }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(accumulatedBalances));
+        return Collections.unmodifiableMap(new LinkedHashMap<>(accumulatedInventoryCounts));
 
     }
 }

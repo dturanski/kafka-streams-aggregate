@@ -164,18 +164,18 @@ public class KafkaStreamsInventoryCountTests {
     }
 
     private Map<ProductKey, InventoryCountEvent> consumeActualEvents(int count) {
-        Map<ProductKey, InventoryCountEvent> summaryEvents = new LinkedHashMap<>();
-        while (summaryEvents.size() < count) {
+        Map<ProductKey, InventoryCountEvent> inventoryCountEvents = new LinkedHashMap<>();
+        while (inventoryCountEvents.size() < count) {
             ConsumerRecords<ProductKey, InventoryCountEvent> records = KafkaTestUtils.getRecords(consumer, 5000);
             if (records.isEmpty()) {
                 break;
             }
             for (Iterator<ConsumerRecord<ProductKey, InventoryCountEvent>> it = records.iterator(); it.hasNext(); ) {
                 ConsumerRecord<ProductKey, InventoryCountEvent> consumerRecord = it.next();
-                summaryEvents.put(consumerRecord.key(), consumerRecord.value());
+                inventoryCountEvents.put(consumerRecord.key(), consumerRecord.value());
             }
         }
-        return summaryEvents;
+        return inventoryCountEvents;
 
     }
 

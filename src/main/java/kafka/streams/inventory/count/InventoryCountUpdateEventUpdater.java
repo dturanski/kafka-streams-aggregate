@@ -23,25 +23,25 @@ public class InventoryCountUpdateEventUpdater implements BiFunction<InventoryUpd
     private final static Logger logger = LoggerFactory.getLogger(InventoryCountUpdateEventUpdater.class);
 
     @Override
-    public InventoryCountEvent apply(InventoryUpdateEvent updateEvent, InventoryCountEvent summaryEvent) {
-        int delta = updateEvent.getDelta();
-        logger.debug("Applying update {} {} {} to summaryEvent. Current count is {}",
-                updateEvent.getKey().getProductCode(), updateEvent.getAction(), updateEvent.getDelta(), summaryEvent.getCount());
-        switch (updateEvent.getAction()) {
+    public InventoryCountEvent apply(InventoryUpdateEvent inventoryUpdateEvent, InventoryCountEvent inventoryCountEvent) {
+        int delta = inventoryUpdateEvent.getDelta();
+        logger.trace("Applying update {} {} {} to inventoryCountEvent. Current count is {}",
+                inventoryUpdateEvent.getKey().getProductCode(), inventoryUpdateEvent.getAction(), inventoryUpdateEvent.getDelta(), inventoryCountEvent.getCount());
+        switch (inventoryUpdateEvent.getAction()) {
             case DEC:
-                summaryEvent.setCount(summaryEvent.getCount() - delta);
+                inventoryCountEvent.setCount(inventoryCountEvent.getCount() - delta);
                 break;
             case INC:
-                summaryEvent.setCount(summaryEvent.getCount() + delta);
+                inventoryCountEvent.setCount(inventoryCountEvent.getCount() + delta);
                 break;
             case REP:
-                summaryEvent.setCount(delta);
+                inventoryCountEvent.setCount(delta);
                 break;
             default:
                 return null;
         }
-        logger.debug("Applied update {} {} {} to summaryEvent. Current count is {}",
-                updateEvent.getKey().getProductCode(), updateEvent.getAction(), updateEvent.getDelta(), summaryEvent.getCount());
-        return summaryEvent;
+        logger.trace("Applied update {} {} {} to inventoryCountEvent. Current count is {}",
+                inventoryUpdateEvent.getKey().getProductCode(), inventoryUpdateEvent.getAction(), inventoryUpdateEvent.getDelta(), inventoryCountEvent.getCount());
+        return inventoryCountEvent;
     }
 }

@@ -74,7 +74,8 @@ public class KafkaStreamsInventoryCountApplication {
             Serde<ProductKey> keySerde = new JsonSerde<>(ProductKey.class);
 
             return input
-                    .peek((k,v)-> logger.debug("update k " + k.getProductCode() + " v " + v.getDelta() + ":" +  v.getAction()) )
+                    .peek((k,v)->  logger.debug("Processing inventoryUpdateEvent: key {} delta {} action {}",
+                            k.getProductCode() ,v.getDelta(),v.getAction()))
                     .groupByKey(Serialized.with(keySerde, updateEventSerde))
                     .aggregate(InventoryCountEvent::new,
                             (key, updateEvent, summaryEvent) -> summaryEventUpdater.apply(updateEvent, summaryEvent)
@@ -82,7 +83,7 @@ public class KafkaStreamsInventoryCountApplication {
                                     .withKeySerde(keySerde)
                                     .withValueSerde(summaryEventSerde))
 
-                    .toStream().peek((k, v) -> logger.debug("aggregated k " + k.getProductCode() + " v " + v.getCount()));
+                    .toStream().peek((k, v) -> logger.debug("aggregated count key {} {}" , k.getProductCode(),v.getCount()));
         }
     }
 
