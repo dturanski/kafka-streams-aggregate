@@ -75,8 +75,8 @@ public class KafkaStreamsInventoryCountTests {
         eventGenerator = new InventoryUpdateEventGenerator(props, INPUT_TOPIC);
 
         Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(GROUP_NAME, "true", embeddedKafka.getEmbeddedKafka());
-        consumerProps.put("key.deserializer", keySerde.deserializer().getClass());
-        consumerProps.put("value.deserializer", summaryEventSerde.deserializer().getClass());
+        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keySerde.deserializer().getClass());
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, summaryEventSerde.deserializer().getClass());
         consumerProps.put(ConsumerConfig.CLIENT_ID_CONFIG, "test");
         consumerProps.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, 1000);
         consumerProps.put(JsonDeserializer.TRUSTED_PACKAGES, KafkaStreamsInventoryCountTests.class.getPackage().getName());
@@ -88,7 +88,6 @@ public class KafkaStreamsInventoryCountTests {
 
         context = new SpringApplicationBuilder(KafkaStreamsInventoryCountApplication.class)
                 .properties(
-                        "logger.level.kafka.streams.table.join=DEBUG",
                         "spring.cloud.stream.kafka.streams.binder.brokers=" + embeddedKafka.getEmbeddedKafka().getBrokersAsString(),
                         "spring.cloud.stream.kafka.streams.binder.configuration.commit.interval.ms=1000")
                 .run();
