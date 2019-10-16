@@ -58,7 +58,7 @@ public class KafkaStreamsInventoryCountApplication {
 
         private final KeyValueBytesStoreSupplier storeSupplier;
 
-        private final InventoryCountUpdateEventUpdater summaryEventUpdater = new InventoryCountUpdateEventUpdater();
+        private final InventoryCountUpdateEventUpdater inventoryCountUpdateEventUpdater = new InventoryCountUpdateEventUpdater();
 
         public KafkaStreamsInventoryAggregator(KeyValueBytesStoreSupplier storeSupplier) {
             this.storeSupplier = storeSupplier;
@@ -78,7 +78,7 @@ public class KafkaStreamsInventoryCountApplication {
                             k.getProductCode() ,v.getDelta(),v.getAction()))
                     .groupByKey(Serialized.with(keySerde, updateEventSerde))
                     .aggregate(InventoryCountEvent::new,
-                            (key, updateEvent, summaryEvent) -> summaryEventUpdater.apply(updateEvent, summaryEvent)
+                            (key, updateEvent, summaryEvent) -> inventoryCountUpdateEventUpdater.apply(updateEvent, summaryEvent)
                             , Materialized.<ProductKey, InventoryCountEvent>as(storeSupplier)
                                     .withKeySerde(keySerde)
                                     .withValueSerde(summaryEventSerde))

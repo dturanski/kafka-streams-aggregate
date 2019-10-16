@@ -15,19 +15,21 @@
  */
 package kafka.streams.inventory.count;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.TopologyTestDriver;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -36,20 +38,17 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerde;
+import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.test.rule.EmbeddedKafkaRule;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class KafkaStreamsInventoryCountTests {
-
-    private static ObjectMapper mapper = new ObjectMapper();
-    private static Serde<InventoryUpdateEvent> domainEventSerde = new JsonSerde<>(InventoryUpdateEvent.class, mapper);
-    private static Serde<InventoryCountEvent> summaryEventSerde = new JsonSerde<>(InventoryCountEvent.class, mapper);
-    private static Serde<ProductKey> keySerde = new JsonSerde<>(ProductKey.class, mapper);
 
     private static final String INPUT_TOPIC = "inventory-update-events";
     private static final String OUTPUT_TOPIC = "inventory-count-events";
@@ -61,6 +60,7 @@ public class KafkaStreamsInventoryCountTests {
 
     private static ConfigurableApplicationContext context;
     private static DefaultKafkaConsumerFactory<ProductKey, InventoryCountEvent> cf;
+    private static StreamsBuilderFactoryBean streamsBuilderFactoryBean;
 
     @ClassRule
     public static EmbeddedKafkaRule embeddedKafka = new EmbeddedKafkaRule(1, false, INPUT_TOPIC);
@@ -70,13 +70,13 @@ public class KafkaStreamsInventoryCountTests {
         Map<String, Object> props = new HashMap<>();
 
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, embeddedKafka.getEmbeddedKafka().getBrokersAsString());
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerde.serializer().getClass());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, domainEventSerde.serializer().getClass());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         eventGenerator = new InventoryUpdateEventGenerator(props, INPUT_TOPIC);
 
         Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(GROUP_NAME, "true", embeddedKafka.getEmbeddedKafka());
-        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keySerde.deserializer().getClass());
-        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, summaryEventSerde.deserializer().getClass());
+        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
         consumerProps.put(ConsumerConfig.CLIENT_ID_CONFIG, "test");
         consumerProps.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, 1000);
         consumerProps.put(JsonDeserializer.TRUSTED_PACKAGES, KafkaStreamsInventoryCountTests.class.getPackage().getName());
@@ -91,6 +91,7 @@ public class KafkaStreamsInventoryCountTests {
                         "spring.cloud.stream.kafka.streams.binder.brokers=" + embeddedKafka.getEmbeddedKafka().getBrokersAsString(),
                         "spring.cloud.stream.kafka.streams.binder.configuration.commit.interval.ms=1000")
                 .run();
+        streamsBuilderFactoryBean = context.getBean("&stream-builder-process", StreamsBuilderFactoryBean.class);
 
     }
 
@@ -177,6 +178,20 @@ public class KafkaStreamsInventoryCountTests {
         assertThat(atLeastOneUpdatedCountIsDifferent).isTrue();
     }
 
+    @Test
+    public void testTopology() throws Exception {
+        Topology topology = streamsBuilderFactoryBean.getObject().build();
+
+        Properties properties = new Properties();
+        properties.setProperty(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, embeddedKafka.getEmbeddedKafka().getBrokersAsString());
+        properties.setProperty(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, JsonSerde.class.getName());
+        properties.setProperty(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, JsonSerde.class.getName());
+        properties.setProperty(StreamsConfig.APPLICATION_ID_CONFIG, "topotest");
+        TopologyTestDriver topologyTestDriver = new TopologyTestDriver(topology, properties);
+        return;
+    }
+
+
     private Map<ProductKey, InventoryCountEvent> consumeActualInventoryCountEvents(int count) {
         Map<ProductKey, InventoryCountEvent> inventoryCountEvents = new LinkedHashMap<>();
         while (inventoryCountEvents.size() < count) {
@@ -192,5 +207,6 @@ public class KafkaStreamsInventoryCountTests {
         return inventoryCountEvents;
 
     }
+
 
 }
