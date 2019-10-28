@@ -20,20 +20,17 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.junit.jupiter.api.AfterAll;
+import org.apache.kafka.streams.state.StoreSupplier;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
@@ -41,11 +38,22 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
+import org.springframework.test.annotation.DirtiesContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@EmbeddedKafka(topics = KafkaStreamsInventoryCountTests.INPUT_TOPIC)
-public class KafkaStreamsInventoryCountTests {
+@EmbeddedKafka(
+        bootstrapServersProperty = "spring.kafka.bootstrap-servers",
+        topics = {
+                SpringBootKafkaStreamsInventoryCountTests.INPUT_TOPIC
+        })
+@SpringBootTest(
+        properties = {
+                "spring.cloud.stream.kafka.streams.binder.configuration.commit.interval.ms=1000",
+        })
+@DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
+//@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class SpringBootKafkaStreamsInventoryCountTests {
 
     static final String INPUT_TOPIC = "inventory-update-events";
     static final String OUTPUT_TOPIC = "inventory-count-events";
@@ -53,22 +61,29 @@ public class KafkaStreamsInventoryCountTests {
 
     private Consumer<ProductKey, InventoryCountEvent> consumer;
 
-    private static InventoryUpdateEventGenerator eventGenerator;
+    private InventoryUpdateEventGenerator eventGenerator;
 
-    private static ConfigurableApplicationContext context;
-    private static DefaultKafkaConsumerFactory<ProductKey, InventoryCountEvent> cf;
-    private static StreamsBuilderFactoryBean streamsBuilderFactoryBean;
+    private DefaultKafkaConsumerFactory<ProductKey, InventoryCountEvent> cf;
 
-    @BeforeAll
-    public static void init(EmbeddedKafkaBroker embeddedKafka) {
+    @Autowired
+    private StreamsBuilderFactoryBean streamsBuilderFactoryBean;
+
+    @Autowired
+    private EmbeddedKafkaBroker broker;
+
+    @Autowired
+    private StoreSupplier storeSupplier;
+
+    @BeforeEach
+    void setUp() {
         Map<String, Object> props = new HashMap<>();
 
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, embeddedKafka.getBrokersAsString());
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, broker.getBrokersAsString());
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         eventGenerator = new InventoryUpdateEventGenerator(props, INPUT_TOPIC);
-
-        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(GROUP_NAME, "true", embeddedKafka);
+        eventGenerator.reset();
+        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(GROUP_NAME, "true", broker);
         consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
         consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
         consumerProps.put(ConsumerConfig.CLIENT_ID_CONFIG, "test");
@@ -78,38 +93,20 @@ public class KafkaStreamsInventoryCountTests {
         consumerProps.put(JsonDeserializer.VALUE_DEFAULT_TYPE, InventoryCountEvent.class);
         consumerProps.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, "false");
         cf = new DefaultKafkaConsumerFactory<>(consumerProps);
-
-
-        context = new SpringApplicationBuilder(KafkaStreamsInventoryCountApplication.class)
-                .properties(
-                        "spring.cloud.stream.kafka.streams.binder.brokers=" + embeddedKafka.getBrokersAsString(),
-                        "spring.cloud.stream.kafka.streams.binder.configuration.commit.interval.ms=1000")
-                .run();
-        streamsBuilderFactoryBean = context.getBean(StreamsBuilderFactoryBean.class);
-
-    }
-
-    @AfterAll
-    public static void shutdown() {
-        context.close();
-    }
-
-
-    @BeforeEach
-    public void setUp() {
-        eventGenerator.reset();
-        consumer = cf.createConsumer(UUID.randomUUID().toString());
+        consumer = cf.createConsumer(GROUP_NAME);
         consumer.subscribe(Collections.singleton(OUTPUT_TOPIC));
     }
 
     @AfterEach
-    public void cleanup() {
+    void cleanup() {
+        eventGenerator.reset();
+        storeSupplier.get().flush();
         consumer.close();
     }
 
 
     @RepeatedTest(10)
-    public void processMessagesForSingleKey() {
+    void processMessagesForSingleKey() {
 
         Map<ProductKey, InventoryCountEvent> expectedCounts = eventGenerator.generateRandomEvents(1, 3);
 
@@ -120,11 +117,10 @@ public class KafkaStreamsInventoryCountTests {
         ProductKey key = actualEvents.keySet().iterator().next();
 
         assertThat(actualEvents.get(key).getCount()).isEqualTo(expectedCounts.get(key).getCount());
-
     }
 
     @RepeatedTest(10)
-    public void processAggregatedEventsForSingleKey() {
+    void processAggregatedEventsForSingleKey() {
         Map<ProductKey, InventoryCountEvent> expectedCount;
         expectedCount = eventGenerator.generateRandomEvents(1, 5);
         Map<ProductKey, InventoryCountEvent> originalCount = consumeActualInventoryCountEvents(1);
@@ -141,11 +137,10 @@ public class KafkaStreamsInventoryCountTests {
 
         assertThat(actualCount.get(key).getCount()).isEqualTo(expectedCount.get(key).getCount());
 
-
     }
 
     @RepeatedTest(10)
-    public void processAggregatedEventsForMultipleKeys() {
+    void processAggregatedEventsForMultipleKeys() {
         Map<ProductKey, InventoryCountEvent> initialCounts = eventGenerator.generateRandomEvents(10, 5);
 
         Map<ProductKey, InventoryCountEvent> expectedEvents;
@@ -187,6 +182,5 @@ public class KafkaStreamsInventoryCountTests {
         return inventoryCountEvents;
 
     }
-
 
 }

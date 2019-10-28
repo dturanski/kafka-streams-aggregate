@@ -17,9 +17,12 @@ package kafka.streams.inventory.count;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
@@ -38,7 +41,7 @@ class InventoryUpdateEventGenerator {
 
     private final KafkaTemplate<ProductKey, InventoryUpdateEvent> kafkaTemplate;
 
-    private Map<ProductKey, Integer> accumulatedInventoryCounts = new LinkedHashMap<>();
+    private final Map<ProductKey, InventoryCountEvent> accumulatedInventoryCounts = new LinkedHashMap<>();
 
     InventoryUpdateEventGenerator(Map<String, Object> producerProperties, String destination) {
 
@@ -48,13 +51,19 @@ class InventoryUpdateEventGenerator {
     }
 
 
-    Map<ProductKey, Integer> generateRandomEvents(int numberKeys, int eventsPerKey) {
+    Map<ProductKey, InventoryCountEvent> generateRandomEvents(int numberKeys, int eventsPerKey) {
         InventoryUpdateEvent.Action[] actions = {INC, DEC, REP};
         return doGenerateEvents(numberKeys, eventsPerKey, actions, Optional.empty());
     }
 
     void reset() {
-        accumulatedInventoryCounts.keySet().forEach(key -> kafkaTemplate.sendDefault(key, null));
+        allKeys().forEach(key -> sendEvent(key, null));
+    }
+
+    private List<ProductKey> allKeys() {
+        return IntStream.range(0,10)
+                .mapToObj(i-> new ProductKey("key" + i))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -64,7 +73,7 @@ class InventoryUpdateEventGenerator {
      * @param value        an optional value to set for each event instead of random values.
      * @return expected calculated counts. Accumulates values since last reset to simulate what the aggregator does.
      */
-    private Map<ProductKey, Integer> doGenerateEvents(int numberKeys, int eventsPerKey, InventoryUpdateEvent.Action[] actions, Optional<Integer> value) {
+    private Map<ProductKey, InventoryCountEvent> doGenerateEvents(int numberKeys, int eventsPerKey, InventoryUpdateEvent.Action[] actions, Optional<Integer> value) {
         Random random = new Random();
         InventoryCountUpdateEventUpdater summaryEventUpdater = new InventoryCountUpdateEventUpdater();
 
@@ -72,7 +81,7 @@ class InventoryUpdateEventGenerator {
         for (int j = 0; j < numberKeys; j++) {
             ProductKey key = new ProductKey("key" + j);
             InventoryCountEvent inventoryCountEvent = new InventoryCountEvent(key,
-                    accumulatedInventoryCounts.containsKey(key) ? accumulatedInventoryCounts.get(key) : 0);
+                    accumulatedInventoryCounts.containsKey(key) ? accumulatedInventoryCounts.get(key).getCount() : 0);
             for (int i = 0; i < eventsPerKey; i++) {
                 InventoryUpdateEvent inventoryUpdateEvent = new InventoryUpdateEvent();
                 inventoryUpdateEvent.setKey(key);
@@ -86,12 +95,17 @@ class InventoryUpdateEventGenerator {
                 logger.debug("Sending inventoryUpdateEvent: key {} delta {} action {}",
                         inventoryUpdateEvent.getKey().getProductCode(), inventoryUpdateEvent.getDelta(), inventoryUpdateEvent.getAction());
 
-                kafkaTemplate.sendDefault(inventoryUpdateEvent.getKey(), inventoryUpdateEvent);
+                sendEvent(inventoryUpdateEvent.getKey(),inventoryUpdateEvent);
+
 
             }
-            accumulatedInventoryCounts.put(key, inventoryCountEvent.getCount());
+            accumulatedInventoryCounts.put(key, inventoryCountEvent);
         }
         return Collections.unmodifiableMap(new LinkedHashMap<>(accumulatedInventoryCounts));
 
+    }
+
+    protected void sendEvent(ProductKey key, InventoryUpdateEvent value) {
+        kafkaTemplate.sendDefault(key, value);
     }
 }

@@ -18,9 +18,9 @@ package kafka.streams.inventory.count;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
-import org.apache.kafka.streams.kstream.Serialized;
 import org.apache.kafka.streams.state.KeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.Stores;
 import org.slf4j.Logger;
@@ -52,7 +52,7 @@ public class KafkaStreamsInventoryCountApplication {
     }
 
     @EnableBinding(UpdateEventProcessor.class)
-    public class KafkaStreamsInventoryAggregator {
+    public static class KafkaStreamsInventoryAggregator {
 
         private final Logger logger = LoggerFactory.getLogger(KafkaStreamsInventoryAggregator.class);
 
@@ -69,21 +69,19 @@ public class KafkaStreamsInventoryCountApplication {
         public KStream<ProductKey, InventoryCountEvent> process(KStream<ProductKey, InventoryUpdateEvent> input) {
 
             ObjectMapper mapper = new ObjectMapper();
-            Serde<InventoryCountEvent> summaryEventSerde = new JsonSerde<>(InventoryCountEvent.class, mapper);
+            Serde<InventoryCountEvent> countEventSerde = new JsonSerde<>(InventoryCountEvent.class, mapper);
             Serde<InventoryUpdateEvent> updateEventSerde = new JsonSerde<>(InventoryUpdateEvent.class, mapper);
             Serde<ProductKey> keySerde = new JsonSerde<>(ProductKey.class);
 
             return input
-                    .peek((k,v)->  logger.debug("Processing inventoryUpdateEvent: key {} delta {} action {}",
-                            k.getProductCode() ,v.getDelta(),v.getAction()))
-                    .groupByKey(Serialized.with(keySerde, updateEventSerde))
+                    .groupByKey(Grouped.with(keySerde, updateEventSerde))
                     .aggregate(InventoryCountEvent::new,
                             (key, updateEvent, summaryEvent) -> inventoryCountUpdateEventUpdater.apply(updateEvent, summaryEvent)
                             , Materialized.<ProductKey, InventoryCountEvent>as(storeSupplier)
                                     .withKeySerde(keySerde)
-                                    .withValueSerde(summaryEventSerde))
+                                    .withValueSerde(countEventSerde))
 
-                    .toStream().peek((k, v) -> logger.debug("aggregated count key {} {}" , k.getProductCode(),v.getCount()));
+                    .toStream().peek((k, v) -> logger.debug("aggregated count key {} {}", k.getProductCode(), v.getCount()));
         }
     }
 
